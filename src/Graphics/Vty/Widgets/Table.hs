@@ -19,6 +19,11 @@ module Graphics.Vty.Widgets.Table
     , addRow
     , addHeadingRow
     , addHeadingRow_
+    , replaceRows
+    , insertRows
+    , insertRow
+    , removeRows
+    , removeRow
     , column
     , customCell
     , emptyCell
@@ -53,6 +58,8 @@ data TableError = ColumnCountMismatch
                 | BadTableWidgetSizePolicy Int
                   -- ^A table cell contains a widget which grows
                   -- vertically, which is not permitted.
+                | BadRowIndex
+                -- ^An invalid row index was specified.
                   deriving (Show, Typeable)
 
 instance Exception TableError
@@ -509,7 +516,10 @@ applyCellPadding padding (TableCell w a p) = do
 -- grow vertically; throws 'ColumnCountMismatch' if the row's number
 -- of columns does not match the table's column count.
 addRow :: (RowLike a) => Widget Table -> a -> IO ()
-addRow t row = do
+addRow t row = insertRows t 0 [row]
+
+prepareRow :: (RowLike a) => Widget Table -> a -> IO TableRow
+prepareRow t row = do
   let (TableRow cells_) = mkRow row
 
   cells <- forM (zip [1..] cells_) $ \(i, c) -> do
@@ -528,8 +538,44 @@ addRow t row = do
   nc <- numColumns <~~ t
   when (length cells /= nc) $ throw ColumnCountMismatch
 
-  updateWidgetState t $ \s ->
-      s { rows = rows s ++ [TableRow cells] }
+  return $ TableRow cells
+
+replace
+  :: Int       -- ^ The zero-based index of the starting position
+  -> Maybe Int -- ^ If Just, the number of elements to remove; if Nothing, all elements
+               --   after the starting position are removed
+  -> [a]       -- ^ New elements to insert in place of those removed
+  -> [a]       -- ^ The list to modify
+  -> [a]
+replace startIndex removeCount newList oldList = f startIndex oldList
+  where
+    f 0 [] = g removeCount []
+    f _ [] = throw BadRowIndex
+    f 0 xs = g removeCount xs
+    f n (x : xs) = x : f (n - 1) xs
+    g Nothing _ = newList
+    g (Just n) xs = h n xs
+    h 0 [] = newList
+    h _ [] = throw BadRowIndex
+    h 0 xs = newList ++ xs
+    h n (_ : xs) = h (n - 1) xs
+
+replaceRows :: (RowLike a) => Widget Table -> Int -> Maybe Int -> [a] -> IO ()
+replaceRows t i c genericRows = do
+  tableRows <- mapM (prepareRow t) genericRows
+  updateWidgetState t $ \s -> s { rows = replace i c tableRows $ rows s }
+
+insertRows :: (RowLike a) => Widget Table -> Int -> [a] -> IO ()
+insertRows t i = replaceRows t i (Just 0)
+
+insertRow :: (RowLike a) => Widget Table -> Int -> a -> IO ()
+insertRow t i row = insertRows t i [row]
+
+removeRows :: Widget Table -> Int -> Maybe Int -> IO ()
+removeRows t i c = replaceRows t i c ([] :: [TableCell])
+
+removeRow :: Widget Table -> Int -> IO ()
+removeRow t i = removeRows t i (Just 1)
 
 renderCell :: DisplayRegion -> TableCell -> RenderContext -> IO Image
 renderCell region EmptyCell ctx = do
