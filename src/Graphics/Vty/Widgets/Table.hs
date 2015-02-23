@@ -226,14 +226,25 @@ newTable specs borderSty = do
 
         , render_ =
             \this sz ctx -> do
-              rs <- rows <~~ this
+              allRows <- rows <~~ this
               let sk = skin ctx
-
-              rowImgs <- mapM (\(TableRow r) -> renderRow this sz r ctx) rs
 
               rowBorder <- mkRowBorder this sz ctx $ skinIntersectionFull sk
               topBorder <- mkTopBottomBorder this sz ctx $ skinIntersectionT sk
               bottomBorder <- mkTopBottomBorder this sz ctx $ skinIntersectionB sk
+
+              let hAvail =
+                    regionHeight sz - imageHeight topBorder - imageHeight bottomBorder
+                  hRow = 1 -- the height of a row
+                  hRowBorder = hRow + imageHeight rowBorder
+                  maxVisibleRows =
+                    if hAvail >= hRow
+                    then 1 + ((hAvail - hRow) `div` hRowBorder)
+                    else 0
+                  rs = take maxVisibleRows allRows
+
+              rowImgs <- mapM (\(TableRow r) -> renderRow this sz r ctx) rs
+
               sideBorderL <- mkSideBorder this ctx True
               sideBorderR <- mkSideBorder this ctx False
 
