@@ -6,6 +6,7 @@ module Graphics.Vty.Widgets.EventLoop
     ( Collection
     , CollectionError(..)
     , runUi
+    , runUiWithConfig
     , schedule
     , shutdownUi
     , newCollection
@@ -45,14 +46,19 @@ eventChan = unsafePerformIO newTChanIO
 -- application.  Throws 'BadCollectionIndex' if the specified
 -- 'Collection' is empty.
 runUi :: Collection -> RenderContext -> IO ()
-runUi collection ctx = do
-  vty <- mkVty def
+runUi = runUiWithConfig def
+
+-- |Like 'runUi', but allows for a custom vty 'Config'.
+runUiWithConfig :: Config -> Collection -> RenderContext -> IO ()
+runUiWithConfig config collection ctx = do
+  vty <- mkVty config
 
   -- Create VTY event listener thread
   _ <- forkIO $ vtyEventListener vty eventChan
 
   setCurrentEntry collection 0
   runUi' vty eventChan collection ctx `finally` shutdown vty
+
 
 vtyEventListener :: Vty -> TChan CombinedEvent -> IO ()
 vtyEventListener vty chan =
